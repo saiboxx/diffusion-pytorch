@@ -11,11 +11,12 @@ from torch import Tensor
 class BaseSchedule(ABC):
     """Base class for deriving schedules."""
 
-    def __init__(self, timesteps: int, *args, **kwargs) -> None:
+    def __init__(self, timesteps: int, device: torch.device, *args, **kwargs) -> None:
         """Initialize BaseSchedule."""
         self.timesteps = timesteps
+        self.device = device
 
-        self.betas = self._get_betas(timesteps)
+        self.betas = self._get_betas(timesteps).to(device)
         self.alphas = 1.0 - self.betas
 
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
@@ -25,8 +26,26 @@ class BaseSchedule(ABC):
         self.sqrt_alphas_cumprod = torch.sqrt(self.alphas_cumprod)
         self.sqrt_one_minus_alphas_cumprod = torch.sqrt(1.0 - self.alphas_cumprod)
 
+        self.log_one_minus_alphas_cumprod = torch.log(1.0 - self.alphas_cumprod)
+        self.sqrt_recip_alphas_cumprod = torch.sqrt(1.0 / self.alphas_cumprod)
+        self.sqrt_recipm1_alphas_cumprod = torch.sqrt(1.0 / self.alphas_cumprod - 1)
+
         self.post_var = (
             self.betas * (1.0 - self.alphas_cumprod_prev) / (1.0 - self.alphas_cumprod)
+        )
+
+        self.post_log_var_clipped = torch.log(
+            torch.maximum(self.post_var, torch.tensor(1e-20))
+        )
+        self.post_mean_coef1 = (
+            self.betas
+            * torch.sqrt(self.alphas_cumprod_prev)
+            / (1.0 - self.alphas_cumprod)
+        )
+        self.post_mean_coef2 = (
+            (1.0 - self.alphas_cumprod_prev)
+            * torch.sqrt(self.alphas)
+            / (1.0 - self.alphas_cumprod)
         )
 
     @abstractmethod
@@ -41,6 +60,7 @@ class LinearSchedule(BaseSchedule):
     def __init__(
         self,
         timesteps: int,
+        device: torch.device,
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         *args,
@@ -49,7 +69,7 @@ class LinearSchedule(BaseSchedule):
         """Initialize linear beta schedule."""
         self.beta_start = beta_start
         self.beta_end = beta_end
-        super().__init__(timesteps, *args, **kwargs)
+        super().__init__(timesteps, device, *args, **kwargs)
 
     def _get_betas(self, timesteps: int) -> Tensor:
         """Get betas."""
@@ -59,10 +79,12 @@ class LinearSchedule(BaseSchedule):
 class CosineSchedule(BaseSchedule):
     """Cosine variance schedule."""
 
-    def __init__(self, timesteps: int, s: float = 0.008, *args, **kwargs) -> None:
+    def __init__(
+        self, timesteps: int, device: torch.device, s: float = 0.008, *args, **kwargs
+    ) -> None:
         """Initialize cosine beta schedule."""
         self.s = s
-        super().__init__(timesteps, *args, **kwargs)
+        super().__init__(timesteps, device, *args, **kwargs)
 
     def _get_betas(self, timesteps: int) -> Tensor:
         """Get betas."""
@@ -82,6 +104,7 @@ class QuadraticSchedule(BaseSchedule):
     def __init__(
         self,
         timesteps: int,
+        device: torch.device,
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         *args,
@@ -90,7 +113,7 @@ class QuadraticSchedule(BaseSchedule):
         """Initialize quadratic beta schedule."""
         self.beta_start = beta_start
         self.beta_end = beta_end
-        super().__init__(timesteps, *args, **kwargs)
+        super().__init__(timesteps, device, *args, **kwargs)
 
     def _get_betas(self, timesteps: int) -> Tensor:
         """Get betas."""
@@ -105,6 +128,7 @@ class SigmoidSchedule(BaseSchedule):
     def __init__(
         self,
         timesteps: int,
+        device: torch.device,
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         *args,
@@ -113,7 +137,7 @@ class SigmoidSchedule(BaseSchedule):
         """Initialize sigmoid beta schedule."""
         self.beta_start = beta_start
         self.beta_end = beta_end
-        super().__init__(timesteps, *args, **kwargs)
+        super().__init__(timesteps, device, *args, **kwargs)
 
     def _get_betas(self, timesteps: int) -> Tensor:
         """Get betas."""

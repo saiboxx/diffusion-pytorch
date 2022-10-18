@@ -38,7 +38,7 @@ jobs:
     - name: Run MyPy
       if: ${{ always() }}
       run: |
-        mypy --ignore-missing-imports --scripts-are-modules --follow-imports skip src scripts
+        mypy --ignore-missing-imports --scripts-are-modules --follow-imports skip diffusion scripts
     - name: Run Pydocstyle
       if: ${{ always() }}
       run: |
