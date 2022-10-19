@@ -12,14 +12,21 @@ class Diffusor:
     """Class for modelling the diffusion process."""
 
     def __init__(
-        self, model: nn.Module, schedule: BaseSchedule, clip_denoised: bool = True
+        self,
+        model: nn.Module,
+        schedule: BaseSchedule,
+        device: Optional[torch.device] = None,
+        clip_denoised: bool = True,
     ) -> None:
         """Initialize Diffusor."""
         self.model = model
         self.schedule = schedule
-
-        self.device = model.device
         self.clip_denoised = clip_denoised
+
+        if device is None:
+            self.device = schedule.device
+        else:
+            self.device = device
 
     @staticmethod
     def extract_vals(a: Tensor, t: Tensor, x_shape: Tuple) -> Tensor:
@@ -48,7 +55,7 @@ class Diffusor:
 
         return sqrt_alphas_cumprod_t * x_start + sqrt_one_minus_alphas_cumprod_t * noise
 
-    def predict_start_from_noise(self, x_t, t, noise):
+    def predict_start_from_noise(self, x_t: Tensor, t: Tensor, noise: Tensor) -> Tensor:
         """Subtract noise from x_t over variance schedule."""
         sqrt_recip_alphas_cumprod_t = Diffusor.extract_vals(
             self.schedule.sqrt_recip_alphas_cumprod, t, x_t.shape
@@ -94,7 +101,7 @@ class Diffusor:
     def p_sample(self, x: Tensor, t: Tensor) -> Tensor:
         """Sample from reverse process."""
         model_mean, _, model_log_variance = self.p_mean_variance(x=x, t=t)
-        noise = torch.randn_like(x.shape)
+        noise = torch.randn_like(x)
 
         if t[0] == 0:
             return model_mean

@@ -2,6 +2,7 @@
 from typing import Any, Optional
 
 import numpy as np
+from matplotlib import animation
 from matplotlib import pyplot as plt
 from torch import Tensor
 from torchvision.transforms import (
@@ -50,3 +51,30 @@ def plot_image(
     if show:
         plt.show()
     plt.close()
+
+
+def make_gif(
+    img_arr: Tensor,
+    save_path: str,
+) -> None:
+    """Create a GIF with the output of DiffusionController.generate()."""
+    assert len(img_arr) == 5, 'Array has wrong shape.'
+
+    img_arr = img_arr.detach().cpu()
+
+    fig = plt.figure(frameon=False)
+    ims = []
+
+    for img_t in img_arr:
+        grid = make_grid(img_t, nrow=img_t.shape[0] // 2)
+        im = plt.imshow(grid.permute(1, 2, 0), animated=True)
+        plt.axis('off')
+        plt.tight_layout()
+        ims.append([im])
+
+    fig.tight_layout()
+
+    animate = animation.ArtistAnimation(
+        fig, ims, interval=100, blit=True, repeat_delay=2000
+    )
+    animate.save(save_path)

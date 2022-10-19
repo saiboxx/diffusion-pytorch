@@ -1,6 +1,7 @@
 -e .
 einops
-
+matplotlib
 torch
+torchmetrics
 torchvision
 tqdm

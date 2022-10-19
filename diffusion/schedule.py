@@ -1,7 +1,7 @@
 """Classes und functions for variance schedules."""
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Optional
 
 import torch
 import torch.nn.functional as F
@@ -11,10 +11,15 @@ from torch import Tensor
 class BaseSchedule(ABC):
     """Base class for deriving schedules."""
 
-    def __init__(self, timesteps: int, device: torch.device, *args, **kwargs) -> None:
+    def __init__(
+        self, timesteps: int, device: Optional[torch.device] = None, *args, **kwargs
+    ) -> None:
         """Initialize BaseSchedule."""
         self.timesteps = timesteps
-        self.device = device
+        if device is None:
+            self.device = torch.device('cpu')
+        else:
+            self.device = device
 
         self.betas = self._get_betas(timesteps).to(device)
         self.alphas = 1.0 - self.betas
@@ -60,7 +65,7 @@ class LinearSchedule(BaseSchedule):
     def __init__(
         self,
         timesteps: int,
-        device: torch.device,
+        device: Optional[torch.device] = None,
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         *args,
@@ -80,7 +85,12 @@ class CosineSchedule(BaseSchedule):
     """Cosine variance schedule."""
 
     def __init__(
-        self, timesteps: int, device: torch.device, s: float = 0.008, *args, **kwargs
+        self,
+        timesteps: int,
+        device: Optional[torch.device] = None,
+        s: float = 0.008,
+        *args,
+        **kwargs
     ) -> None:
         """Initialize cosine beta schedule."""
         self.s = s
@@ -104,7 +114,7 @@ class QuadraticSchedule(BaseSchedule):
     def __init__(
         self,
         timesteps: int,
-        device: torch.device,
+        device: Optional[torch.device] = None,
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         *args,
@@ -128,7 +138,7 @@ class SigmoidSchedule(BaseSchedule):
     def __init__(
         self,
         timesteps: int,
-        device: torch.device,
+        device: Optional[torch.device] = None,
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         *args,
@@ -151,7 +161,7 @@ class ScheduleFactory:
     """Factory wrapper for variance schedules."""
 
     @staticmethod
-    def get_schedule(name: str, *args, **kwargs) -> BaseSchedule:
+    def get_schedule(name: str, timesteps: int, *args, **kwargs) -> BaseSchedule:
         """Initialize a scheduler by name."""
         cls: Any
         if name == 'linear':
@@ -167,4 +177,4 @@ class ScheduleFactory:
                 'There is no matching schedule for name "{}".'.format(name)
             )
 
-        return cls(*args, **kwargs)
+        return cls(timesteps, *args, **kwargs)
