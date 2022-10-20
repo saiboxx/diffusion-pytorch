@@ -132,4 +132,6 @@ dmypy.json
 .idea
 dummy.ipynb
 logs
+logs_dgx
 .data
+commands_dgx

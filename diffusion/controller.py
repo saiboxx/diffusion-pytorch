@@ -23,6 +23,7 @@ class DiffusionController:
         diffusor_params: Dict,
         device: torch.device,
         loss_func: str = 'l1',
+        ddp: bool = False,
     ) -> None:
         """Initialize DiffusionController."""
         self.device = device
@@ -37,6 +38,7 @@ class DiffusionController:
         )
 
         self.loss_func = DiffusionController._get_loss_func(loss_func)
+        self.ddp_used = ddp
 
     def add_noise(self, x_start: Tensor, t: Tensor, do_scaling: bool = True) -> Tensor:
         """Corrupt one or more images with noise according to a timestep."""
@@ -63,7 +65,8 @@ class DiffusionController:
         do_scaling: bool = True,
     ) -> Tensor:
         """Generate a batch of new images."""
-        shape = (batch_size, self.model.channels, img_res, img_res)
+        self.diffusor.model.eval()
+        shape = (batch_size, self.get_model_obj().channels, img_res, img_res)
 
         if log_every is None:
             res = self.diffusor.p_sample_loop(shape)
@@ -73,8 +76,15 @@ class DiffusionController:
         if do_scaling:
             res.clamp_(-1, 1)
             res = (res + 1) / 2
-
+        self.diffusor.model.train()
         return res
+
+    def get_model_obj(self) -> nn.Module:
+        """Return model object. Helps in accessing attributes in a DDP setting."""
+        if self.ddp_used:
+            return self.model.module
+        else:
+            return self.model
 
     def get_model_params(self) -> Any:
         """Return model parameters."""
