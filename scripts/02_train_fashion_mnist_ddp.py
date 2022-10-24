@@ -205,11 +205,14 @@ def train(
         if ep % cfg['sample_freq'] == 0:
             if rank == 0:
                 print('\n--> GENERATING SAMPLES FROM MODEL <--')
-            imgs = diff.generate(
-                img_res=28,
-                batch_size=cfg['sample_size'],
-                log_every=diff.schedule.timesteps // 10,
-            ).detach()
+            with autocast():
+                imgs = diff.generate(
+                    img_res=28,
+                    batch_size=cfg['sample_size'],
+                    log_every=diff.schedule.timesteps // 10,
+                )
+
+            imgs = imgs.detach().float()
 
             tensor_list = [
                 torch.zeros(imgs.shape, dtype=torch.float, device=device)

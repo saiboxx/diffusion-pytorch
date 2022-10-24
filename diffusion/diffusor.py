@@ -118,6 +118,7 @@ class Diffusor:
             iterable=reversed(range(0, self.schedule.timesteps)),
             desc='sampling loop time step',
             total=self.schedule.timesteps,
+            leave=False,
         )
         for i in pbar:
             t = torch.full((batch_size,), i, device=self.device, dtype=torch.long)
@@ -136,10 +137,78 @@ class Diffusor:
             iterable=reversed(range(0, self.schedule.timesteps)),
             desc='sampling loop time step',
             total=self.schedule.timesteps,
+            leave=False,
         )
         for i in pbar:
             t = torch.full((batch_size,), i, device=self.device, dtype=torch.long)
             img = self.p_sample(img, t)
+
+            if i % log_every_t == 0 or i == self.schedule.timesteps - 1:
+                result.append(img)
+
+        return torch.stack(result)
+
+
+class SR3Diffusor(Diffusor):
+    """Class for modelling the diffusion process in SR3."""
+
+    def p_mean_variance(  # type: ignore
+        self, x: Tensor, sr: Tensor, t: Tensor
+    ) -> Tuple[Tensor, Tensor, Tensor]:
+        """Compute mean and variance for reverse process."""
+        x_in = torch.cat([x, sr], dim=1)
+        noise_pred = self.model(x_in, t)
+        x_recon = self.predict_start_from_noise(x, t=t, noise=noise_pred)
+
+        if self.clip_denoised:
+            x_recon.clamp_(-1.0, 1.0)
+        return self.q_posterior(x_start=x_recon, x_t=x, t=t)
+
+    @torch.no_grad()
+    def p_sample(self, x: Tensor, sr: Tensor, t: Tensor) -> Tensor:
+        """Sample from reverse process."""
+        model_mean, _, model_log_variance = self.p_mean_variance(x=x, sr=sr, t=t)
+        noise = torch.randn_like(x)
+
+        if t[0] == 0:
+            return model_mean
+        else:
+            return model_mean + (0.5 * model_log_variance).exp() * noise
+
+    @torch.no_grad()
+    def p_sample_loop(self, sr: Tensor) -> Tensor:
+        """Initiate generation process."""
+        batch_size = sr.shape[0]
+        img = torch.randn(sr.shape, device=self.device)
+
+        pbar = tqdm(
+            iterable=reversed(range(0, self.schedule.timesteps)),
+            desc='sampling loop time step',
+            total=self.schedule.timesteps,
+            leave=False,
+        )
+        for i in pbar:
+            t = torch.full((batch_size,), i, device=self.device, dtype=torch.long)
+            img = self.p_sample(img, sr, t)
+        return img
+
+    @torch.no_grad()
+    def p_sample_loop_with_steps(self, sr: Tensor, log_every_t: int) -> Tensor:
+        """Initiate generation process and return intermediate steps."""
+        batch_size = sr.shape[0]
+        img = torch.randn(sr.shape, device=self.device)
+
+        result = [img]
+
+        pbar = tqdm(
+            iterable=reversed(range(0, self.schedule.timesteps)),
+            desc='sampling loop time step',
+            total=self.schedule.timesteps,
+            leave=False,
+        )
+        for i in pbar:
+            t = torch.full((batch_size,), i, device=self.device, dtype=torch.long)
+            img = self.p_sample(img, sr, t)
 
             if i % log_every_t == 0 or i == self.schedule.timesteps - 1:
                 result.append(img)
