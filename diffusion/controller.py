@@ -8,7 +8,7 @@ from typing import (
 import torch
 from torch import Tensor, nn
 
-from diffusion.diffusor import Diffusor
+from diffusion.diffusor import DDIMDiffusor
 from diffusion.model import Unet
 from diffusion.schedule import ScheduleFactory
 
@@ -30,7 +30,7 @@ class DiffusionController:
         self.model = Unet(**model_params).to(device)
         schedule_params['device'] = self.device
         self.schedule = ScheduleFactory.get_schedule(**schedule_params)
-        self.diffusor = Diffusor(
+        self.diffusor = DDIMDiffusor(
             model=self.model,
             schedule=self.schedule,
             device=self.device,

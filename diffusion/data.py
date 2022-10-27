@@ -46,7 +46,7 @@ class ChestXrayDataset(Dataset):
         img = Image.open(meta['path'])
         img = self.transforms(img)
 
-        return {'img': img}
+        return {'IMG': img}
 
 
 class ChestXraySR3Dataset(ChestXrayDataset):

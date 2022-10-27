@@ -214,3 +214,190 @@ class SR3Diffusor(Diffusor):
                 result.append(img)
 
         return torch.stack(result)
+
+
+class DDIMDiffusor(Diffusor):
+    """Class for modelling the diffusion process with DDIM."""
+
+    def __init__(
+        self,
+        model: nn.Module,
+        schedule: BaseSchedule,
+        sampling_steps: Optional[int] = 100,
+        eta: Optional[float] = 0.0,
+        device: Optional[torch.device] = None,
+        clip_denoised: bool = True,
+    ) -> None:
+        """Initialize DDIM sampler."""
+        super().__init__(model, schedule, device, clip_denoised)
+        self.sampling_steps = sampling_steps
+        self.eta = eta
+
+        self.ddim_timesteps = torch.arange(
+            start=0,
+            end=schedule.timesteps,
+            step=schedule.timesteps // self.sampling_steps,
+        )
+
+        # Select alphas for DDIM variance schedule
+        self.ddim_alpha_cumprod = self.schedule.alphas_cumprod[self.ddim_timesteps]
+        self.ddim_alphas_cumprod_prev = torch.cat(
+            [
+                self.schedule.alphas_cumprod[0].unsqueeze(0),
+                self.schedule.alphas_cumprod[self.ddim_timesteps[:-1]],
+            ]
+        )
+        self.sigmas = self.eta * torch.sqrt(
+            (1 - self.ddim_alphas_cumprod_prev)
+            / (1 - self.ddim_alpha_cumprod)
+            * (1 - self.ddim_alpha_cumprod / self.ddim_alphas_cumprod_prev)
+        )
+
+        self.ddim_sqrt_one_minus_alphas_cumprod = torch.sqrt(
+            1.0 - self.ddim_alpha_cumprod
+        )
+
+    @torch.no_grad()
+    def p_sample(self, x: Tensor, t: Tensor, index: int) -> Tensor:
+        """Sample from reverse process."""
+        b = x.shape[0]
+        a_t = torch.full(
+            (b, 1, 1, 1), self.ddim_alpha_cumprod[index], device=self.device
+        )
+        a_prev = torch.full(
+            (b, 1, 1, 1), self.ddim_alphas_cumprod_prev[index], device=self.device
+        )
+        sigma_t = torch.full((b, 1, 1, 1), self.sigmas[index], device=self.device)
+        sqrt_one_minus_at = torch.full(
+            (b, 1, 1, 1),
+            self.ddim_sqrt_one_minus_alphas_cumprod[index],
+            device=self.device,
+        )
+
+        e_t = self.model(x, t)
+        pred_x0 = (x - sqrt_one_minus_at * e_t) / a_t.sqrt()
+        dir_xt = (1.0 - a_prev - sigma_t**2).sqrt() * e_t
+
+        noise = sigma_t * torch.randn_like(x)
+
+        x_prev = a_prev.sqrt() * pred_x0 + dir_xt + noise
+        return x_prev
+
+    @torch.no_grad()
+    def p_sample_loop(self, shape: Tuple) -> Tensor:
+        """Initiate generation process."""
+        batch_size = shape[0]
+        img = torch.randn(shape, device=self.device)
+
+        pbar = tqdm(
+            iterable=torch.flip(self.ddim_timesteps, dims=(0,)),
+            desc='DDIM sampling loop time step',
+            total=len(self.ddim_timesteps),
+            leave=False,
+        )
+
+        for i, step in enumerate(pbar):
+            index = len(self.ddim_timesteps) - i - 1
+            t = torch.full((batch_size,), step, device=self.device, dtype=torch.long)
+            img = self.p_sample(img, t, index)
+        return img
+
+    @torch.no_grad()
+    def p_sample_loop_with_steps(self, shape: Tuple, log_every_t: int) -> Tensor:
+        """Initiate generation process and return intermediate steps."""
+        batch_size = shape[0]
+        img = torch.randn(shape, device=self.device)
+
+        result = [img]
+
+        pbar = tqdm(
+            iterable=torch.flip(self.ddim_timesteps, dims=(0,)),
+            desc='DDIM sampling loop time step',
+            total=len(self.ddim_timesteps),
+            leave=False,
+        )
+
+        for i, step in enumerate(pbar):
+            index = len(self.ddim_timesteps) - i - 1
+            t = torch.full((batch_size,), step, device=self.device, dtype=torch.long)
+            img = self.p_sample(img, t, index)
+
+            if i % log_every_t == 0 or i == self.schedule.timesteps - 1:
+                result.append(img)
+
+        return torch.stack(result)
+
+
+class SR3DDIMDiffusor(DDIMDiffusor):
+    """Class for modelling the diffusion process with DDIM for super resolution."""
+
+    @torch.no_grad()
+    def p_sample(self, x: Tensor, sr: Tensor, t: Tensor, index: int) -> Tensor:
+        """Sample from reverse process."""
+        b = x.shape[0]
+        a_t = torch.full(
+            (b, 1, 1, 1), self.ddim_alpha_cumprod[index], device=self.device
+        )
+        a_prev = torch.full(
+            (b, 1, 1, 1), self.ddim_alphas_cumprod_prev[index], device=self.device
+        )
+        sigma_t = torch.full((b, 1, 1, 1), self.sigmas[index], device=self.device)
+        sqrt_one_minus_at = torch.full(
+            (b, 1, 1, 1),
+            self.ddim_sqrt_one_minus_alphas_cumprod[index],
+            device=self.device,
+        )
+
+        x_in = torch.cat([x, sr], dim=1)
+        e_t = self.model(x_in, t)
+        pred_x0 = (x - sqrt_one_minus_at * e_t) / a_t.sqrt()
+        dir_xt = (1.0 - a_prev - sigma_t**2).sqrt() * e_t
+
+        noise = sigma_t * torch.randn_like(x)
+
+        x_prev = a_prev.sqrt() * pred_x0 + dir_xt + noise
+        return x_prev
+
+    @torch.no_grad()
+    def p_sample_loop(self, sr: Tensor) -> Tensor:
+        """Initiate generation process."""
+        batch_size = sr.shape[0]
+        img = torch.randn(sr.shape, device=self.device)
+
+        pbar = tqdm(
+            iterable=torch.flip(self.ddim_timesteps, dims=(0,)),
+            desc='DDIM sampling loop time step',
+            total=len(self.ddim_timesteps),
+            leave=False,
+        )
+
+        for i, step in enumerate(pbar):
+            index = len(self.ddim_timesteps) - i - 1
+            t = torch.full((batch_size,), step, device=self.device, dtype=torch.long)
+            img = self.p_sample(img, sr, t, index)
+        return img
+
+    @torch.no_grad()
+    def p_sample_loop_with_steps(self, sr: Tensor, log_every_t: int) -> Tensor:
+        """Initiate generation process and return intermediate steps."""
+        batch_size = sr.shape[0]
+        img = torch.randn(sr.shape, device=self.device)
+
+        result = [img]
+
+        pbar = tqdm(
+            iterable=torch.flip(self.ddim_timesteps, dims=(0,)),
+            desc='DDIM sampling loop time step',
+            total=len(self.ddim_timesteps),
+            leave=False,
+        )
+
+        for i, step in enumerate(pbar):
+            index = len(self.ddim_timesteps) - i - 1
+            t = torch.full((batch_size,), step, device=self.device, dtype=torch.long)
+            img = self.p_sample(img, sr, t, index)
+
+            if i % log_every_t == 0 or i == self.schedule.timesteps - 1:
+                result.append(img)
+
+        return torch.stack(result)

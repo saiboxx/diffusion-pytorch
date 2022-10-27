@@ -1,4 +1,4 @@
-"""Train a diffusion model for super resolution."""
+"""Train a diffusion model for synthesizing chest radiographs."""
 import os
 from typing import (
     Dict,
@@ -26,7 +26,7 @@ from tqdm import tqdm
 
 from diffusion.controller import DiffusionController
 from diffusion.data import MaCheXDataset
-from diffusion.diffusor import SR3DDIMDiffusor
+from diffusion.diffusor import SR3Diffusor
 from diffusion.utils import plot_image
 
 BASE_CONFIG: Final = {
@@ -38,7 +38,7 @@ BASE_CONFIG: Final = {
     'save_freq': 1000,
     'sample_freq': 5000,
     'sample_size': 4,
-    'resume_checkpoint': 'logs/sr3/model.pt',
+    'resume_checkpoint': 'logs/chex_64/model.pt',
     'data_root': '/data/core-rad/machex',
     'log_dir': 'logs/sr3',
     'model_params': {
@@ -247,7 +247,7 @@ def train(
                     tqdm.write('---> GENERATING SAMPLES FROM MODEL <---')
                 with autocast():
                     diff.model.eval()
-                    diffusor = SR3DDIMDiffusor(
+                    diffusor = SR3Diffusor(
                         model=diff.model, schedule=diff.schedule, device=device
                     )
                     x_eval = x_sr[: min(cfg['sample_size'], len(x_sr))]
