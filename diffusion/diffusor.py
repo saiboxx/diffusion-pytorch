@@ -8,7 +8,8 @@ from tqdm import tqdm
 from diffusion.schedule import BaseSchedule
 from diffusion.simplex_noise import SimplexNoise
 
-class Diffusor:
+
+class DDPMDiffusor:
     """Class for modelling the diffusion process."""
 
     def __init__(
@@ -33,7 +34,7 @@ class Diffusor:
             self.noise_fn = torch.randn_like
         elif noise_fn == 'simplex':
             self.noise_fn = SimplexNoise(
-                octaves=6, persistence=0.8, frequency=1 / 64, lacunarity=2.
+                octaves=6, persistence=0.8, frequency=1 / 64, lacunarity=2.0
             )
 
     @staticmethod
@@ -54,10 +55,10 @@ class Diffusor:
         if noise is None:
             noise = self.noise_fn(x_start)
 
-        sqrt_alphas_cumprod_t = Diffusor.extract_vals(
+        sqrt_alphas_cumprod_t = DDPMDiffusor.extract_vals(
             self.schedule.sqrt_alphas_cumprod, t, x_start.shape
         )
-        sqrt_one_minus_alphas_cumprod_t = Diffusor.extract_vals(
+        sqrt_one_minus_alphas_cumprod_t = DDPMDiffusor.extract_vals(
             self.schedule.sqrt_one_minus_alphas_cumprod, t, x_start.shape
         )
 
@@ -65,10 +66,10 @@ class Diffusor:
 
     def predict_start_from_noise(self, x_t: Tensor, t: Tensor, noise: Tensor) -> Tensor:
         """Subtract noise from x_t over variance schedule."""
-        sqrt_recip_alphas_cumprod_t = Diffusor.extract_vals(
+        sqrt_recip_alphas_cumprod_t = DDPMDiffusor.extract_vals(
             self.schedule.sqrt_recip_alphas_cumprod, t, x_t.shape
         )
-        sqrt_recipm1_alphas_cumprod_t = Diffusor.extract_vals(
+        sqrt_recipm1_alphas_cumprod_t = DDPMDiffusor.extract_vals(
             self.schedule.sqrt_recipm1_alphas_cumprod, t, x_t.shape
         )
 
@@ -82,14 +83,14 @@ class Diffusor:
         self, x_start: Tensor, x_t: Tensor, t: Tensor
     ) -> Tuple[Tensor, Tensor, Tensor]:
         """Compute posterior q."""
-        posterior_mean_coef1 = Diffusor.extract_vals(
+        posterior_mean_coef1 = DDPMDiffusor.extract_vals(
             self.schedule.post_mean_coef1, t, x_t.shape
         )
-        posterior_mean_coef2 = Diffusor.extract_vals(
+        posterior_mean_coef2 = DDPMDiffusor.extract_vals(
             self.schedule.post_mean_coef2, t, x_t.shape
         )
-        post_var = Diffusor.extract_vals(self.schedule.post_var, t, x_t.shape)
-        posterior_log_var_clipped = Diffusor.extract_vals(
+        post_var = DDPMDiffusor.extract_vals(self.schedule.post_var, t, x_t.shape)
+        posterior_log_var_clipped = DDPMDiffusor.extract_vals(
             self.schedule.post_log_var_clipped, t, x_t.shape
         )
 
@@ -158,7 +159,7 @@ class Diffusor:
         return torch.stack(result)
 
 
-class SR3Diffusor(Diffusor):
+class SR3Diffusor(DDPMDiffusor):
     """Class for modelling the diffusion process in SR3."""
 
     def p_mean_variance(  # type: ignore
@@ -225,15 +226,15 @@ class SR3Diffusor(Diffusor):
         return torch.stack(result)
 
 
-class DDIMDiffusor(Diffusor):
+class DDIMDiffusor(DDPMDiffusor):
     """Class for modelling the diffusion process with DDIM."""
 
     def __init__(
         self,
         model: nn.Module,
         schedule: BaseSchedule,
-        sampling_steps: Optional[int] = 100,
-        eta: Optional[float] = 0.0,
+        sampling_steps: int = 100,
+        eta: float = 0.0,
         device: Optional[torch.device] = None,
         clip_denoised: bool = True,
         noise_fn: Optional[str] = None,

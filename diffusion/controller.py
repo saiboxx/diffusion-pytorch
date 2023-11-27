@@ -118,4 +118,3 @@ class DiffusionController:
         predicted_noise = self.model(x_noisy, t)
 
         return self.loss_func(noise, predicted_noise)
-
