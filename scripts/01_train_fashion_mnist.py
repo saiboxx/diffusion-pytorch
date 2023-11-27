@@ -25,15 +25,15 @@ from diffusion.controller import DiffusionController
 from diffusion.utils import plot_image
 
 BASE_CONFIG: Final = {
-    'epochs': 100,
+    'epochs': 1000,
     'batch_size': 128,
-    'num_workers': 4,
-    'learning_rate': 1e-3,
-    'sample_freq': 1,
+    'num_workers': 8,
+    'learning_rate': 1e-4,
+    'sample_freq': 5,
     'sample_size': 4,
     'log_dir': 'logs/fmnist',
     'model_params': {
-        'dim': 16,
+        'dim': 32,
         'channels': 1,
         'dim_mults': (
             1,
@@ -42,13 +42,16 @@ BASE_CONFIG: Final = {
         ),
     },
     'schedule_params': {
-        'name': 'cosine',
+        'name': 'linear',
         'timesteps': 500,
+        'beta_start': 0.0001,
+        'beta_end': 0.04
     },
-    'diffusor_params': {},
+    'diffusor_params': {
+        'noise_fn': 'simplex'
+    },
     'loss_func': 'l1',
 }
-
 
 def run(cfg: Dict) -> None:
     """Kick off training."""
@@ -115,7 +118,7 @@ def train(
     # ----------------------------------------------------------------------------------
     # METRICS
     # ----------------------------------------------------------------------------------
-    metric_train_loss = MeanMetric(compute_on_step=False).to(device)
+    metric_train_loss = MeanMetric().to(device)
 
     # We also define a dictionary that keeps track over all computed metrics.
     metrics: Dict[str, List] = {
@@ -143,7 +146,6 @@ def train(
             optimizer.step()
 
             metric_train_loss(batch_loss)
-            break
 
         # ------------------------------------------------------------------------------
         # METRIC COMPUTATION
@@ -168,7 +170,6 @@ def train(
             imgs = diff.generate(
                 img_res=28, batch_size=cfg['sample_size'], log_every=20
             )
-            print(imgs.shape)
             grid_path = os.path.join(log_dir, 'sample_ep_{}'.format(str(ep).zfill(3)))
             save_sampling_grid(imgs, grid_path)
 

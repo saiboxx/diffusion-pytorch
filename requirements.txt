@@ -6,3 +6,5 @@ torchmetrics
 torchvision
 tqdm
 wandb
+opensimplex
+numba

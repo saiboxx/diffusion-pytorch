@@ -57,6 +57,11 @@ class DiffusionController:
 
         return x_noised.to(orig_device)
 
+    @torch.no_grad()
+    def generate_noise(self, x_like: Tensor) -> Tensor:
+        """Generate noise from the noise function."""
+        return self.diffusor.noise_fn(x_like)
+
     def generate(
         self,
         img_res: int,
@@ -107,9 +112,10 @@ class DiffusionController:
     ) -> Tensor:
         """Execute training procedure for a batch of images."""
         if noise is None:
-            noise = torch.randn_like(x_start)
+            noise = self.generate_noise(x_start)
 
         x_noisy = self.diffusor.q_sample(x_start=x_start, t=t, noise=noise)
         predicted_noise = self.model(x_noisy, t)
 
         return self.loss_func(noise, predicted_noise)
+

@@ -40,6 +40,8 @@ def plot_image(
     # Shape of 4 implies multiple image inputs
     if len(img.shape) == 4:
         img = make_grid(img, nrow=ncols if ncols is not None else len(img))
+    elif img.shape[0] == 1:
+        img = img.expand(3, -1, -1)
 
     plt.figure(figsize=fig_size)
     plt.imshow(img.permute(1, 2, 0))

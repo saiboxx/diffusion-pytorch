@@ -6,7 +6,7 @@ from torch import Tensor, nn
 from tqdm import tqdm
 
 from diffusion.schedule import BaseSchedule
-
+from diffusion.simplex_noise import SimplexNoise
 
 class Diffusor:
     """Class for modelling the diffusion process."""
@@ -17,6 +17,7 @@ class Diffusor:
         schedule: BaseSchedule,
         device: Optional[torch.device] = None,
         clip_denoised: bool = True,
+        noise_fn: Optional[str] = None,
     ) -> None:
         """Initialize Diffusor."""
         self.model = model
@@ -27,6 +28,13 @@ class Diffusor:
             self.device = schedule.device
         else:
             self.device = device
+
+        if noise_fn is None:
+            self.noise_fn = torch.randn_like
+        elif noise_fn == 'simplex':
+            self.noise_fn = SimplexNoise(
+                octaves=6, persistence=0.8, frequency=1 / 64, lacunarity=2.
+            )
 
     @staticmethod
     def extract_vals(a: Tensor, t: Tensor, x_shape: Tuple) -> Tensor:
@@ -44,7 +52,7 @@ class Diffusor:
         Given an initial `x_start` and a timestep `t, return perturbed images `x_t`.
         """
         if noise is None:
-            noise = torch.randn_like(x_start)
+            noise = self.noise_fn(x_start)
 
         sqrt_alphas_cumprod_t = Diffusor.extract_vals(
             self.schedule.sqrt_alphas_cumprod, t, x_start.shape
@@ -101,7 +109,7 @@ class Diffusor:
     def p_sample(self, x: Tensor, t: Tensor) -> Tensor:
         """Sample from reverse process."""
         model_mean, _, model_log_variance = self.p_mean_variance(x=x, t=t)
-        noise = torch.randn_like(x)
+        noise = self.noise_fn(x)
 
         if t[0] == 0:
             return model_mean
@@ -112,7 +120,8 @@ class Diffusor:
     def p_sample_loop(self, shape: Tuple) -> Tensor:
         """Initiate generation process."""
         batch_size = shape[0]
-        img = torch.randn(shape, device=self.device)
+
+        img = self.noise_fn(torch.empty(shape, device=self.device))
 
         pbar = tqdm(
             iterable=reversed(range(0, self.schedule.timesteps)),
@@ -129,7 +138,7 @@ class Diffusor:
     def p_sample_loop_with_steps(self, shape: Tuple, log_every_t: int) -> Tensor:
         """Initiate generation process and return intermediate steps."""
         batch_size = shape[0]
-        img = torch.randn(shape, device=self.device)
+        img = self.noise_fn(torch.empty(shape, device=self.device))
 
         result = [img]
 
@@ -227,9 +236,10 @@ class DDIMDiffusor(Diffusor):
         eta: Optional[float] = 0.0,
         device: Optional[torch.device] = None,
         clip_denoised: bool = True,
+        noise_fn: Optional[str] = None,
     ) -> None:
         """Initialize DDIM sampler."""
-        super().__init__(model, schedule, device, clip_denoised)
+        super().__init__(model, schedule, device, clip_denoised, noise_fn)
         self.sampling_steps = sampling_steps
         self.eta = eta
 
@@ -278,16 +288,18 @@ class DDIMDiffusor(Diffusor):
         pred_x0 = (x - sqrt_one_minus_at * e_t) / a_t.sqrt()
         dir_xt = (1.0 - a_prev - sigma_t**2).sqrt() * e_t
 
-        noise = sigma_t * torch.randn_like(x)
+        noise = sigma_t * self.noise_fn(x)
 
-        x_prev = a_prev.sqrt() * pred_x0 + dir_xt + noise
+        x_prev = a_prev.sqrt() * pred_x0 + dir_xt
+        if self.eta > 0:
+            x_prev += noise
         return x_prev
 
     @torch.no_grad()
     def p_sample_loop(self, shape: Tuple) -> Tensor:
         """Initiate generation process."""
         batch_size = shape[0]
-        img = torch.randn(shape, device=self.device)
+        img = self.noise_fn(torch.empty(shape, device=self.device))
 
         pbar = tqdm(
             iterable=torch.flip(self.ddim_timesteps, dims=(0,)),
@@ -306,7 +318,7 @@ class DDIMDiffusor(Diffusor):
     def p_sample_loop_with_steps(self, shape: Tuple, log_every_t: int) -> Tensor:
         """Initiate generation process and return intermediate steps."""
         batch_size = shape[0]
-        img = torch.randn(shape, device=self.device)
+        img = self.noise_fn(torch.empty(shape, device=self.device))
 
         result = [img]
 
