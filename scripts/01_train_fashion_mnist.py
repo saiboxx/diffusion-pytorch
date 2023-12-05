@@ -45,13 +45,12 @@ BASE_CONFIG: Final = {
         'name': 'linear',
         'timesteps': 500,
         'beta_start': 0.0001,
-        'beta_end': 0.04
+        'beta_end': 0.04,
     },
-    'diffusor_params': {
-        'noise_fn': 'simplex'
-    },
+    'diffusor_params': {'noise_fn': 'simplex'},
     'loss_func': 'l1',
 }
+
 
 def run(cfg: Dict) -> None:
     """Kick off training."""
@@ -129,7 +128,6 @@ def train(
     # START TRAINING PROCEDURE
     # ----------------------------------------------------------------------------------
     for ep in range(1, epochs + 1):
-
         # ------------------------------------------------------------------------------
         # TRAINING LOOP
         # ------------------------------------------------------------------------------
